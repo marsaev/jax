@@ -830,6 +830,21 @@ void Gesvd(cudaStream_t stream, void** buffers, const char* opaque,
                                   s.message().length());
   }
 }
+template <typename T>
+static void printm(T* data, int m, int n, int lda, const char* label)
+{
+	printf("%s: \n", label);
+	for (int r = 0; r < m; r++)
+	{
+		printf("[ ");
+		for (int c = 0; c < m; c++)
+		{
+			printf("%.7g, ", data[c*lda + r]);
+		}
+		printf("]\n");
+	}
+	return;
+}
 
 // Singular value decomposition using Jacobi algorithm: gesvdj
 
@@ -852,6 +867,16 @@ static absl::Status Gesvdj_(cudaStream_t stream, void** buffers,
   JAX_RETURN_IF_ERROR(JAX_AS_STATUS(cusolverDnCreateGesvdjInfo(&params)));
   std::unique_ptr<gesvdjInfo, void (*)(gesvdjInfo*)> params_cleanup(
       params, [](gesvdjInfo* p) { cusolverDnDestroyGesvdjInfo(p); });
+  cudaStream_t st;
+  cusolverDnGetStream(handle.get(), &st);
+  typedef float T;
+  size_t min_size = std::min(d.m, d.n);
+  std::vector<T> ha (d.m * d.m);
+  std::vector<T> hs (min_size);
+  std::vector<T> hu (d.m * d.m);
+  std::vector<T> hv (d.n * d.n);
+  size_t ts = sizeof(T);
+
   if (d.batch == 1) {
     switch (d.type) {
       case CusolverType::F32: {
@@ -862,6 +887,15 @@ static absl::Status Gesvdj_(cudaStream_t stream, void** buffers,
         JAX_RETURN_IF_ERROR(JAX_AS_STATUS(cusolverDnSgesvdj(
             handle.get(), d.jobz, d.econ, d.m, d.n, a, d.m, s, u, d.m, v,
             d.n, static_cast<float*>(work), d.lwork, info, params)));
+
+        cudaMemcpyAsync(ha.data(), a,   ts*d.m*d.m, cudaMemcpyDefault, st);
+        cudaMemcpyAsync(hs.data(), s,   ts*min_size, cudaMemcpyDefault, st);
+        cudaMemcpyAsync(hu.data(), u,   ts*d.m*d.m, cudaMemcpyDefault, st);
+        cudaMemcpyAsync(hv.data(), v,   ts*d.n*d.n, cudaMemcpyDefault, st);
+        printm(ha.data(), d.m, d.m, d.m, "A");
+        printm(hs.data(), min_size, 1, 1, "Sig");
+        printm(hu.data(), d.m, d.m, d.m, "U");
+        printm(hv.data(), d.n, d.n, d.n, "Vt");
         break;
       }
       case CusolverType::F64: {
@@ -895,6 +929,8 @@ static absl::Status Gesvdj_(cudaStream_t stream, void** buffers,
         break;
       }
     }
+
+
   } else {
     switch (d.type) {
       case CusolverType::F32: {

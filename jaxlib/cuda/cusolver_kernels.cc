@@ -837,7 +837,7 @@ static void printm(T* data, int m, int n, int lda, const char* label)
 	for (int r = 0; r < m; r++)
 	{
 		printf("[ ");
-		for (int c = 0; c < m; c++)
+		for (int c = 0; c < n; c++)
 		{
 			printf("%.7g, ", data[c*lda + r]);
 		}
@@ -892,6 +892,7 @@ static absl::Status Gesvdj_(cudaStream_t stream, void** buffers,
         cudaMemcpyAsync(hs.data(), s,   ts*min_size, cudaMemcpyDefault, st);
         cudaMemcpyAsync(hu.data(), u,   ts*d.m*d.m, cudaMemcpyDefault, st);
         cudaMemcpyAsync(hv.data(), v,   ts*d.n*d.n, cudaMemcpyDefault, st);
+	cudaStreamSynchronize(st);
         printm(ha.data(), d.m, d.m, d.m, "A");
         printm(hs.data(), min_size, 1, 1, "Sig");
         printm(hu.data(), d.m, d.m, d.m, "U");
